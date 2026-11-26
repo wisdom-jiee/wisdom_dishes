@@ -2,11 +2,23 @@ const journey=document.querySelector('#journey'),book=document.querySelector('#b
  let spreads=[], progress=0, current=0;
 const reduced=matchMedia('(prefers-reduced-motion: reduce)');
 const node=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e};
+const detail=document.querySelector('#dishDetail');
+let detailRequest=0;
+async function showDish(dish){
+ const request=++detailRequest,recipe=document.querySelector('#detailRecipe');
+ document.querySelector('#detailImage').src='/uploads/'+encodeURIComponent(dish.image);document.querySelector('#detailImage').alt=dish.name;document.querySelector('#detailName').textContent=dish.name;document.querySelector('#detailNumber').textContent='NO. '+String(dish.index+1).padStart(2,'0');
+ const ingredients=document.querySelector('#detailIngredients');ingredients.replaceChildren(node('li','ingredient-placeholder','正在读取材料…'));recipe.textContent='正在读取做法…';detail.showModal();document.documentElement.classList.add('dish-detail-open');
+ try{const response=await fetch('/api/admin/dishes',{cache:'no-store'});if(!response.ok)throw Error();const dishes=await response.json();const latest=dishes.find(item=>item.id===dish.id);if(!latest||!Object.hasOwn(latest,'recipe'))throw Error();if(request===detailRequest&&detail.open){recipe.textContent=latest.recipe?.trim()||'这道菜的做法还在整理中。';if(!Array.isArray(latest.ingredients)){ingredients.replaceChildren(node('li','ingredient-placeholder','服务版本过旧，请重启本地服务。'))}else{const names=latest.ingredients;ingredients.replaceChildren(...(names.length?names.map(name=>node('li','',name)):[node('li','ingredient-placeholder','暂未填写材料')]))}}}
+ catch{if(request===detailRequest&&detail.open){recipe.textContent='做法暂时无法读取，请刷新页面后重试。';ingredients.replaceChildren(node('li','ingredient-placeholder','材料暂时无法读取'))}}
+}
+document.querySelector('.detail-close').addEventListener('click',()=>detail.close());
+detail.addEventListener('close',()=>document.documentElement.classList.remove('dish-detail-open'));
+detail.addEventListener('click',e=>{if(e.target===detail)detail.close()});
 function makePage(items,pageNumber,side){
  const page=node('div','page-content');const head=node('div','page-heading');head.append(node('span','','MAISON · 家宴'),node('span','',String(pageNumber).padStart(2,'0')));page.append(head);
  const list=node('div','page-dishes');
  if(!items.length){const empty=node('div','page-empty');empty.append(node('span','','✳'),node('p','',side==='left'?'好食光，共此刻。':'更多美味，敬请期待。'));list.append(empty)}
- items.forEach((dish,i)=>{const item=node('article','dish');const photo=node('div','dish-photo');const img=node('img');img.src='/uploads/'+encodeURIComponent(dish.image);img.alt=dish.name;img.loading=pageNumber<=2?'eager':'lazy';photo.append(img);const meta=node('div','dish-meta');meta.append(node('span','dish-name',dish.name),node('span','dish-index',String(dish.index+1).padStart(2,'0')));item.append(photo,meta);list.append(item)});page.append(list);
+ items.forEach(dish=>{const item=node('button','dish');item.type='button';item.setAttribute('aria-label','查看'+dish.name+'的做法');item.addEventListener('click',()=>showDish(dish));const photo=node('div','dish-photo');const img=node('img');img.src='/uploads/'+encodeURIComponent(dish.image);img.alt='';img.loading=pageNumber<=2?'eager':'lazy';photo.append(img);const meta=node('div','dish-meta');meta.append(node('span','dish-name',dish.name),node('span','dish-index',String(dish.index+1).padStart(2,'0')));item.append(photo,meta);list.append(item)});page.append(list);
  const foot=node('div','page-footer');foot.append(node('span','','A TABLE MADE FOR YOU'),node('span','','✳'));page.append(foot);return page;
 }
 function render(){
@@ -28,7 +40,13 @@ function update(){
  left.style.visibility=open>=1&&!book._mobile?'visible':'hidden';
  const phase=Math.max(0,t-1),spread=Math.max(0,Math.min(n-1,Math.floor(phase+0.00001)));
  const turn=phase-spread,turning=spread<n-1&&turn>0.00001;
- Array.from(leaves.children).forEach((leaf,i)=>{const active=turning&&i===spread;leaf.style.visibility=active?'visible':'hidden';if(active)leaf.style.transform='rotateY('+(-180*turn)+'deg)'});
+ Array.from(leaves.children).forEach((leaf,i)=>{
+  const active=turning&&i===spread;
+  leaf.style.visibility=active?'visible':'hidden';
+  leaf.children[0].inert=!active||turn>=.5;
+  leaf.children[1].inert=!active||turn<.5;
+  if(active)leaf.style.transform='rotateY('+(-180*turn)+'deg)';
+ });
  const rightIndex=turning?spread+1:spread;
  const viewKey=spread+':'+rightIndex;
  if(viewKey!==current||right.childElementCount===0){current=viewKey;const leftItems=book._pages[spread].left,rightItems=book._pages[rightIndex].right;if(spread===0&&!book._mobile){const lining=cover.querySelector('.cover-inside').cloneNode(true);lining.className='cover-lining';left.replaceChildren(lining)}else left.replaceChildren(makePage(leftItems,spread*2,'left'));right.replaceChildren(makePage(rightItems,book._mobile?rightIndex+1:rightIndex*2+1,'right'))}
